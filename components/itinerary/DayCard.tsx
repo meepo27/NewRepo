@@ -1,11 +1,16 @@
 'use client';
 
-import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
-import type { ItineraryDay } from '@/types';
-import { ActivityBlock, TIME_LABELS } from './ActivityBlock';
+import type { ItineraryDay } from '@/types/planning';
+import { ActivityBlock } from './ActivityBlock';
 import { cn } from '@/lib/utils';
+
+const TIME_LABELS = {
+  morning: '🌅 Morning',
+  afternoon: '☀️ Afternoon',
+  evening: '🌙 Evening',
+} as const;
 
 interface DayCardProps {
   day: ItineraryDay;
@@ -15,8 +20,12 @@ interface DayCardProps {
 }
 
 export function DayCard({ day, currency, isOpen, onToggle }: DayCardProps) {
-  const allActivities = [...day.morning, ...day.afternoon, ...day.evening];
-  const dayTotal = allActivities.reduce((sum, a) => sum + (a.estimatedCost || 0), 0);
+  const allActivities = [
+    ...day.morning.activities,
+    ...day.afternoon.activities,
+    ...day.evening.activities,
+  ];
+  const dayTotal = allActivities.reduce((sum, a) => sum + (a.estimatedCost?.amount ?? 0), 0);
 
   return (
     <div className="border border-white/8 rounded-2xl overflow-hidden">
@@ -32,15 +41,15 @@ export function DayCard({ day, currency, isOpen, onToggle }: DayCardProps) {
           <div>
             <p className="text-white font-medium text-sm">{day.theme}</p>
             <p className="text-white/40 text-xs">
-              {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-              {' · '}
-              {allActivities.length} activities
+              {day.date} · {allActivities.length} activities
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           {dayTotal > 0 && (
-            <span className="text-amber-400/70 text-xs">~{currency}{dayTotal.toLocaleString()}</span>
+            <span className="text-amber-400/70 text-xs">
+              ~{currency} {dayTotal.toLocaleString()}
+            </span>
           )}
           <ChevronDown
             size={16}
@@ -60,7 +69,7 @@ export function DayCard({ day, currency, isOpen, onToggle }: DayCardProps) {
           >
             <div className="p-4 bg-[#0A0F1E] space-y-5">
               {(['morning', 'afternoon', 'evening'] as const).map((period) => {
-                const activities = day[period];
+                const activities = day[period].activities;
                 if (!activities.length) return null;
                 return (
                   <div key={period}>
@@ -69,7 +78,7 @@ export function DayCard({ day, currency, isOpen, onToggle }: DayCardProps) {
                     </h4>
                     <div>
                       {activities.map((activity, i) => (
-                        <ActivityBlock key={activity.id} activity={activity} currency={currency} index={i} />
+                        <ActivityBlock key={activity.id} activity={activity} index={i} />
                       ))}
                     </div>
                   </div>
@@ -82,3 +91,5 @@ export function DayCard({ day, currency, isOpen, onToggle }: DayCardProps) {
     </div>
   );
 }
+
+export { TIME_LABELS };

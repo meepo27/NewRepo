@@ -46,7 +46,7 @@ export function SharedItineraryView({ itinerary, destination }: SharedItineraryV
         <div className="mb-6">
           <h1 className="text-white font-semibold text-2xl">{destination}</h1>
           <p className="text-white/40 text-sm mt-1">
-            {itinerary.totalDays} days · {itinerary.currency} {itinerary.totalEstimatedCost.toLocaleString()} estimated
+            {itinerary.tripSummary.duration} days · {itinerary.budgetSummary.currency} {itinerary.budgetSummary.grandTotal.toLocaleString()} estimated
           </p>
         </div>
 
@@ -56,7 +56,7 @@ export function SharedItineraryView({ itinerary, destination }: SharedItineraryV
               <DayCard
                 key={day.dayNumber}
                 day={day}
-                currency={itinerary.currency}
+                currency={itinerary.budgetSummary.currency}
                 isOpen={openDays.has(day.dayNumber)}
                 onToggle={() => toggleDay(day.dayNumber)}
               />

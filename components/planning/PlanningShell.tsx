@@ -1,6 +1,6 @@
 'use client';
 
-import { usePlanningStore } from '@/store/planningStore';
+import { usePlanningStore, PlanningStage } from '@/store/planningStore';
 import { LandingStage } from './LandingStage';
 import { DiscoverStage } from './DiscoverStage';
 import { ShortlistComparePage } from './ShortlistComparePage';
@@ -10,14 +10,11 @@ import { DriftThinking } from '@/components/ui/DriftThinking';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ErrorMessage } from '@/components/ui/ErrorMessage';
 
-const stageOrder = ['spark', 'discover', 'shortlist', 'builder', 'itinerary', 'save'];
-
 export function PlanningShell() {
   const { stage, isLoading, loadingMessage, error, setError } = usePlanningStore();
 
   return (
     <div className="relative min-h-dvh overflow-hidden" style={{ background: '#0A0F1E' }}>
-      {/* Pre-dawn gradient overlay */}
       <div
         className="fixed inset-0 pointer-events-none"
         style={{
@@ -26,14 +23,12 @@ export function PlanningShell() {
         }}
       />
 
-      {/* Global loading overlay */}
       {isLoading && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0A0F1E]/80 backdrop-blur-sm">
           <DriftThinking message={loadingMessage} />
         </div>
       )}
 
-      {/* Global error toast */}
       {error && !isLoading && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-sm w-full px-4">
           <div className="bg-red-950/90 border border-red-800 rounded-xl p-4 backdrop-blur-sm">
@@ -42,7 +37,6 @@ export function PlanningShell() {
         </div>
       )}
 
-      {/* Stage transitions */}
       <AnimatePresence mode="wait">
         <motion.div
           key={stage}
@@ -52,11 +46,15 @@ export function PlanningShell() {
           transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
           className="relative z-10 min-h-dvh"
         >
-          {stage === 'spark' && <LandingStage />}
-          {stage === 'discover' && <DiscoverStage />}
-          {stage === 'shortlist' && <ShortlistComparePage />}
-          {stage === 'builder' && <TripBuilderStage />}
-          {stage === 'itinerary' && <ItineraryStage />}
+          {stage === PlanningStage.SPARK && <LandingStage />}
+          {stage === PlanningStage.DISCOVERY && <DiscoverStage />}
+          {(stage === PlanningStage.SHORTLIST || stage === PlanningStage.COMPARISON) && (
+            <ShortlistComparePage />
+          )}
+          {stage === PlanningStage.TRIP_CONFIG && <TripBuilderStage />}
+          {(stage === PlanningStage.ITINERARY || stage === PlanningStage.REFINE) && (
+            <ItineraryStage />
+          )}
         </motion.div>
       </AnimatePresence>
     </div>

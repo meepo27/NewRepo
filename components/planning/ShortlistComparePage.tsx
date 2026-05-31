@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Star, Check, Globe } from 'lucide-react';
-import { usePlanningStore } from '@/store/planningStore';
-import type { ComparisonSummary, Destination } from '@/types';
+import { ArrowLeft, Check, Globe } from 'lucide-react';
+import { usePlanningStore, PlanningStage } from '@/store/planningStore';
+import type { ComparisonResult, Destination, DestinationComparison } from '@/types/planning';
 import { cn } from '@/lib/utils';
 import { DriftThinking } from '@/components/ui/DriftThinking';
 
@@ -34,16 +34,23 @@ function CompareCard({
   onChoose,
 }: {
   destination: Destination;
-  comparison?: ComparisonSummary;
+  comparison?: DestinationComparison;
   isChosen: boolean;
   onChoose: () => void;
 }) {
+  const visaColor =
+    comparison?.visa.requirement === 'visa-free'
+      ? 'bg-green-900/50 text-green-400'
+      : comparison?.visa.requirement === 'visa-on-arrival'
+      ? 'bg-amber-900/50 text-amber-400'
+      : 'bg-red-900/50 text-red-400';
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn(
-        'relative rounded-2xl border p-5 transition-all duration-300 flex flex-col gap-4',
+        'relative rounded-2xl border p-5 flex flex-col gap-4 transition-all duration-300',
         isChosen
           ? 'border-amber-500 bg-amber-500/5 shadow-xl shadow-amber-500/10'
           : 'border-white/10 bg-[#141929]'
@@ -71,33 +78,44 @@ function CompareCard({
       {comparison ? (
         <>
           <div className="space-y-2.5">
-            <ScoreBar score={comparison.costScore} label="Value for money" />
-            <ScoreBar score={comparison.weatherScore} label="Weather" />
-            <ScoreBar score={comparison.uniquenessScore} label="Uniqueness" />
+            <ScoreBar score={comparison.scores.valueForMoney} label="Value for money" />
+            <ScoreBar score={comparison.scores.weatherInTravelPeriod} label="Weather" />
+            <ScoreBar score={comparison.scores.easeOfTravel} label="Ease of travel" />
+            <ScoreBar score={comparison.scores.matchToTravelStyle} label="Style match" />
           </div>
 
           <div className="flex items-center gap-2 text-sm">
             <Globe size={13} className="text-white/40" />
-            <span className="text-white/50">Visa ease:</span>
-            <span className={cn(
-              'font-medium text-xs px-2 py-0.5 rounded-full',
-              comparison.visaEase === 'Easy' ? 'bg-green-900/50 text-green-400' :
-              comparison.visaEase === 'Moderate' ? 'bg-amber-900/50 text-amber-400' :
-              'bg-red-900/50 text-red-400'
-            )}>
-              {comparison.visaEase}
+            <span className="text-white/50">Visa:</span>
+            <span className={cn('font-medium text-xs px-2 py-0.5 rounded-full', visaColor)}>
+              {comparison.visa.requirement.replace(/-/g, ' ')}
             </span>
           </div>
 
-          <p className="text-white/65 text-sm leading-relaxed border-t border-white/8 pt-4">
-            &quot;{comparison.whyItWins}&quot;
-          </p>
+          {comparison.weatherSummary && (
+            <p className="text-white/45 text-xs">{comparison.weatherSummary}</p>
+          )}
+
+          <ul className="space-y-1">
+            {comparison.quickPros.map((p) => (
+              <li key={p} className="text-green-400/70 text-xs flex gap-1.5">
+                <span>+</span>
+                {p}
+              </li>
+            ))}
+            {comparison.quickCons.map((c) => (
+              <li key={c} className="text-red-400/60 text-xs flex gap-1.5">
+                <span>−</span>
+                {c}
+              </li>
+            ))}
+          </ul>
         </>
       ) : (
         <div className="space-y-2">
-          <div className="skeleton h-3 w-full rounded" />
-          <div className="skeleton h-3 w-4/5 rounded" />
-          <div className="skeleton h-3 w-3/5 rounded" />
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="skeleton h-3 rounded" />
+          ))}
         </div>
       )}
 
@@ -110,7 +128,13 @@ function CompareCard({
             : 'bg-white/8 text-white hover:bg-white/15 border border-white/10'
         )}
       >
-        {isChosen ? <><Check size={15} /> Chosen</> : 'Choose this destination'}
+        {isChosen ? (
+          <>
+            <Check size={15} /> Chosen
+          </>
+        ) : (
+          'Choose this destination'
+        )}
       </button>
     </motion.div>
   );
@@ -118,7 +142,7 @@ function CompareCard({
 
 export function ShortlistComparePage() {
   const store = usePlanningStore();
-  const [comparisons, setComparisons] = useState<ComparisonSummary[]>([]);
+  const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
   const [chosenId, setChosenId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -129,36 +153,45 @@ export function ShortlistComparePage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            destinations: store.shortlist,
-            userPrompt: store.initialPrompt,
-            history: store.conversationHistory,
+            shortlistedDestinations: store.shortlistedDestinations.map((d) => ({
+              id: d.id,
+              name: `${d.name}, ${d.country}`,
+              budgetTier: d.budgetTier,
+              vibeTags: d.vibeTags,
+            })),
+            travelDates: { from: '', to: '' },
+            travelers: { adults: 2, children: 0 },
+            budgetRange: { currency: store.userProfile.currency, min: 0, max: 5000 },
+            travelStyle: store.userProfile.travelStyle,
+            passportCountry: store.userProfile.passportCountry,
+            homeCity: store.userProfile.homeCity,
           }),
         });
-        const data = await res.json();
-        if (data.comparisons) setComparisons(data.comparisons);
+        const data: ComparisonResult = await res.json();
+        setComparisonResult(data);
       } catch {}
       setLoading(false);
     };
-    fetchComparisons();
-  }, [store.shortlist, store.initialPrompt, store.conversationHistory]);
+    if (store.shortlistedDestinations.length >= 2) fetchComparisons();
+    else setLoading(false);
+  }, [store.shortlistedDestinations, store.userProfile]);
 
   const handleChoose = (destination: Destination) => {
     setChosenId(destination.id);
-    store.setChosenDestination(destination);
+    store.setSelectedDestination(destination);
   };
 
   const handleProceed = () => {
     if (!chosenId) return;
-    store.setStage('builder');
+    store.setStage(PlanningStage.TRIP_CONFIG);
   };
 
   return (
     <div className="min-h-dvh px-4 py-6">
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
         <div className="flex items-center gap-3 mb-8">
           <button
-            onClick={() => store.setStage('discover')}
+            onClick={() => store.setStage(PlanningStage.DISCOVERY)}
             className="text-white/40 hover:text-white transition-colors"
           >
             <ArrowLeft size={18} />
@@ -174,20 +207,39 @@ export function ShortlistComparePage() {
             <DriftThinking message="Comparing your destinations..." />
           </div>
         ) : (
-          <div className={cn(
-            'grid gap-4',
-            store.shortlist.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'
-          )}>
-            {store.shortlist.map((dest) => (
-              <CompareCard
-                key={dest.id}
-                destination={dest}
-                comparison={comparisons.find((c) => c.destinationId === dest.id)}
-                isChosen={chosenId === dest.id}
-                onChoose={() => handleChoose(dest)}
-              />
-            ))}
-          </div>
+          <>
+            {comparisonResult?.recommendation && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="mb-6 p-4 rounded-xl bg-amber-500/8 border border-amber-500/20"
+              >
+                <p className="text-amber-400 text-sm font-medium mb-1">
+                  Drift recommends: {comparisonResult.recommendation.winnerName}
+                </p>
+                <p className="text-white/60 text-sm leading-relaxed">
+                  {comparisonResult.recommendation.whyItWinsForYou}
+                </p>
+              </motion.div>
+            )}
+
+            <div
+              className={cn(
+                'grid gap-4',
+                store.shortlistedDestinations.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'
+              )}
+            >
+              {store.shortlistedDestinations.map((dest) => (
+                <CompareCard
+                  key={dest.id}
+                  destination={dest}
+                  comparison={comparisonResult?.comparisons.find((c) => c.destinationId === dest.id)}
+                  isChosen={chosenId === dest.id}
+                  onChoose={() => handleChoose(dest)}
+                />
+              ))}
+            </div>
+          </>
         )}
 
         {chosenId && (
@@ -200,7 +252,8 @@ export function ShortlistComparePage() {
               onClick={handleProceed}
               className="px-8 py-3.5 rounded-xl bg-amber-500 text-black font-semibold text-base hover:bg-amber-400 transition-colors shadow-lg shadow-amber-500/20"
             >
-              Plan my trip to {store.shortlist.find((d) => d.id === chosenId)?.name} →
+              Plan my trip to{' '}
+              {store.shortlistedDestinations.find((d) => d.id === chosenId)?.name} →
             </button>
           </motion.div>
         )}

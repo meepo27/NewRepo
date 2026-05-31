@@ -1,43 +1,59 @@
 'use client';
 
 import { useCallback } from 'react';
-import { usePlanningStore } from '@/store/planningStore';
-import type { Destination, TripConfig, Itinerary } from '@/types';
+import { usePlanningStore, PlanningStage } from '@/store/planningStore';
+import type { Destination, TripConfig, Itinerary, Refinement } from '@/types/planning';
 
 export function usePlanningSession() {
   const store = usePlanningStore();
 
+  // ── Discover ────────────────────────────────────────────────────────────────────
+
   const discoverDestinations = useCallback(
-    async (prompt: string, refinement?: string) => {
+    async (userInput: string, refinement?: string) => {
       store.setLoading(true, 'Drift is finding the perfect destinations for you...');
       store.setError(null);
 
-      try {
-        const messages = refinement
-          ? [
-              ...store.conversationHistory,
-              { role: 'user' as const, content: refinement },
-            ]
-          : [{ role: 'user' as const, content: prompt }];
+      const input = refinement ?? userInput;
+      const timestamp = Date.now();
 
+      try {
         const res = await fetch('/api/plan/discover', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: refinement ?? prompt, history: messages }),
+          body: JSON.stringify({
+            userInput: input,
+            homeCity: store.userProfile.homeCity,
+            passportCountry: store.userProfile.passportCountry,
+            currency: store.userProfile.currency,
+            conversationHistory: store.conversationHistory.map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+          }),
         });
 
-        if (!res.ok) throw new Error('Failed to discover destinations');
-        const data = await res.json();
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Failed to discover destinations');
+        }
 
-        store.setDestinations(data.destinations);
-        if (refinement) {
-          store.addMessage({ role: 'user', content: refinement });
-          store.addMessage({ role: 'assistant', content: JSON.stringify(data.destinations) });
-        } else {
-          store.setInitialPrompt(prompt);
-          store.addMessage({ role: 'user', content: prompt });
-          store.addMessage({ role: 'assistant', content: JSON.stringify(data.destinations) });
-          store.setStage('discover');
+        const data: { destinations: Destination[]; driftNote: string; error?: string } =
+          await res.json();
+
+        if (data.error) throw new Error(data.error);
+
+        store.setDiscoveredDestinations(data.destinations);
+        store.addToConversation({ role: 'user', content: input, timestamp });
+        store.addToConversation({
+          role: 'assistant',
+          content: data.driftNote || `Here are ${data.destinations.length} destination ideas for you.`,
+          timestamp: Date.now(),
+        });
+
+        if (!refinement) {
+          store.setUserInput(userInput);
+          store.setStage(PlanningStage.DISCOVERY);
         }
       } catch (err) {
         store.setError(err instanceof Error ? err.message : 'Something went wrong');
@@ -48,24 +64,39 @@ export function usePlanningSession() {
     [store]
   );
 
+  // ── Refresh one destination ──────────────────────────────────────────────────────
+
   const refreshDestination = useCallback(
     async (destinationId: string) => {
-      store.setLoading(true, 'Finding a new option...');
+      const current = store.discoveredDestinations;
+      const exclude = current.map((d) => `${d.name}, ${d.country}`).join('; ');
+      const refreshInput = `${store.userInput} (Exclude: ${exclude})`;
+
+      store.setLoading(true, 'Finding a fresh option...');
+      store.setError(null);
+
       try {
         const res = await fetch('/api/plan/discover', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            prompt: store.initialPrompt,
-            history: store.conversationHistory,
-            refreshExclude: store.destinations.map((d) => d.name),
-            refreshOne: true,
+            userInput: refreshInput,
+            homeCity: store.userProfile.homeCity,
+            passportCountry: store.userProfile.passportCountry,
+            currency: store.userProfile.currency,
+            conversationHistory: [],
           }),
         });
+
         if (!res.ok) throw new Error('Refresh failed');
-        const data = await res.json();
+        const data: { destinations: Destination[] } = await res.json();
+
         if (data.destinations?.[0]) {
-          store.refreshDestination(destinationId, data.destinations[0]);
+          // Replace the specific card
+          const updated = current.map((d) =>
+            d.id === destinationId ? data.destinations[0] : d
+          );
+          store.setDiscoveredDestinations(updated);
         }
       } catch (err) {
         store.setError(err instanceof Error ? err.message : 'Refresh failed');
@@ -76,20 +107,46 @@ export function usePlanningSession() {
     [store]
   );
 
+  // ── Generate itinerary ───────────────────────────────────────────────────────────
+
   const generateItinerary = useCallback(
     async (config: TripConfig): Promise<Itinerary | null> => {
+      const dest = store.selectedDestination;
+      if (!dest) {
+        store.setError('No destination selected');
+        return null;
+      }
+
       store.setLoading(true, 'Building your perfect itinerary...');
       store.setError(null);
+
       try {
+        store.setTripConfig(config);
+
         const res = await fetch('/api/plan/itinerary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ config, history: store.conversationHistory }),
+          body: JSON.stringify({
+            destination: { id: dest.id, name: dest.name, country: dest.country },
+            travelDates: config.travelDates,
+            travelers: config.travelers,
+            budget: config.budget,
+            travelStyle: config.travelStyle,
+            startingCity: config.startingCity,
+            startingCityIATA: config.startingCityIATA,
+            passportCountry: store.userProfile.passportCountry,
+            preferences: config.preferences,
+          }),
         });
-        if (!res.ok) throw new Error('Failed to generate itinerary');
-        const data = await res.json();
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Failed to generate itinerary');
+        }
+
+        const data: { itinerary: Itinerary } = await res.json();
         store.setItinerary(data.itinerary);
-        store.setStage('itinerary');
+        store.setStage(PlanningStage.ITINERARY);
         return data.itinerary;
       } catch (err) {
         store.setError(err instanceof Error ? err.message : 'Failed to generate itinerary');
@@ -101,26 +158,57 @@ export function usePlanningSession() {
     [store]
   );
 
+  // ── Refine itinerary ─────────────────────────────────────────────────────────────
+
   const refineItinerary = useCallback(
-    async (message: string): Promise<Itinerary | null> => {
+    async (userMessage: string): Promise<Refinement | null> => {
+      if (!store.itinerary) return null;
+
       store.setLoading(true, 'Updating your itinerary...');
       store.setError(null);
+
+      const timestamp = Date.now();
+
       try {
+        store.addRefineMessage({ role: 'user', content: userMessage, timestamp });
+
         const res = await fetch('/api/plan/refine', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message,
+            userMessage,
             currentItinerary: store.itinerary,
-            history: store.conversationHistory,
+            conversationHistory: store.refineMessages.map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+            tripContext: {
+              destination: store.itinerary.tripSummary.destination,
+              travelStyle: store.tripConfig?.travelStyle ?? '',
+              budget: store.itinerary.budgetSummary,
+              passportCountry: store.userProfile.passportCountry,
+            },
           }),
         });
-        if (!res.ok) throw new Error('Refinement failed');
-        const data = await res.json();
-        store.setItinerary(data.itinerary);
-        store.addMessage({ role: 'user', content: message });
-        store.addMessage({ role: 'assistant', content: 'Itinerary updated based on your request.' });
-        return data.itinerary;
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Refinement failed');
+        }
+
+        const data: Refinement = await res.json();
+
+        store.addRefineMessage({
+          role: 'assistant',
+          content: data.message,
+          timestamp: Date.now(),
+        });
+
+        if (data.patch) {
+          store.applyRefinementPatch(data.patch);
+        }
+
+        return data;
       } catch (err) {
         store.setError(err instanceof Error ? err.message : 'Refinement failed');
         return null;

@@ -30,12 +30,12 @@ export function SaveShareModal({ itinerary, onClose }: SaveShareModalProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          destination: itinerary.destination,
-          startDate: itinerary.flightInfo.departureDate,
-          endDate: itinerary.flightInfo.returnDate,
-          travelers: (store.tripConfig.adults ?? 1) + (store.tripConfig.children ?? 0),
-          budget: itinerary.totalEstimatedCost,
-          currency: itinerary.currency,
+          destination: itinerary.tripSummary.destination,
+          startDate: itinerary.flights.outbound.date,
+          endDate: itinerary.flights.return.date,
+          travelers: (store.tripConfig?.travelers?.adults ?? 1) + (store.tripConfig?.travelers?.children ?? 0),
+          budget: itinerary.budgetSummary.grandTotal,
+          currency: itinerary.budgetSummary.currency,
           itinerary,
         }),
       });
@@ -100,7 +100,7 @@ export function SaveShareModal({ itinerary, onClose }: SaveShareModalProps) {
           <div className="space-y-3">
             <h2 className="text-white font-semibold text-lg">Save or share your trip</h2>
             <p className="text-white/50 text-sm">
-              {itinerary.destination}, {itinerary.country}
+              {itinerary.tripSummary.destination}, {itinerary.tripSummary.country}
             </p>
             <button
               onClick={handleSave}

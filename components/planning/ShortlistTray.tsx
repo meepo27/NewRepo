@@ -2,11 +2,11 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ArrowRight } from 'lucide-react';
-import type { ShortlistedDestination } from '@/types';
+import type { Destination } from '@/types/planning';
 import { usePlanningStore } from '@/store/planningStore';
 
 interface ShortlistTrayProps {
-  shortlist: ShortlistedDestination[];
+  shortlist: Destination[];
   onCompare: () => void;
 }
 

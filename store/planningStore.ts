@@ -2,114 +2,263 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type {
-  Destination,
-  ShortlistedDestination,
-  TripConfig,
-  Itinerary,
-  PlanningMessage,
-} from '@/types';
+import {
+  PlanningStage,
+  type Destination,
+  type ComparisonResult,
+  type Itinerary,
+  type ItineraryDay,
+  type RefinementPatch,
+  type TripConfig,
+  type Message,
+  type UserProfile,
+} from '@/types/planning';
 
-export type PlanningStage = 'spark' | 'discover' | 'shortlist' | 'builder' | 'itinerary' | 'save';
+export { PlanningStage };
 
-interface PlanningStore {
+// ─── State ───────────────────────────────────────────────────────────────────────
+
+interface PlanningState {
   stage: PlanningStage;
-  initialPrompt: string;
-  conversationHistory: PlanningMessage[];
-  destinations: Destination[];
-  shortlist: ShortlistedDestination[];
-  chosenDestination: Destination | null;
-  tripConfig: Partial<TripConfig>;
+  userInput: string;
+  userProfile: UserProfile;
+  conversationHistory: Message[];
+  discoveredDestinations: Destination[];
+  shortlistedDestinations: Destination[];
+  selectedDestination: Destination | null;
+  comparisonResult: ComparisonResult | null;
+  tripConfig: TripConfig | null;
   itinerary: Itinerary | null;
-  savedTripId: string | null;
-  shareToken: string | null;
+  refineMessages: Message[];
   isLoading: boolean;
   loadingMessage: string;
   error: string | null;
-
-  setStage: (stage: PlanningStage) => void;
-  setInitialPrompt: (prompt: string) => void;
-  addMessage: (message: PlanningMessage) => void;
-  setDestinations: (destinations: Destination[]) => void;
-  refreshDestination: (id: string, replacement: Destination) => void;
-  addToShortlist: (destination: ShortlistedDestination) => void;
-  removeFromShortlist: (id: string) => void;
-  setChosenDestination: (destination: Destination) => void;
-  updateTripConfig: (config: Partial<TripConfig>) => void;
-  setItinerary: (itinerary: Itinerary) => void;
-  setSavedTripId: (id: string) => void;
-  setShareToken: (token: string) => void;
-  setLoading: (loading: boolean, message?: string) => void;
-  setError: (error: string | null) => void;
-  reset: () => void;
+  sessionId: string;
+  // Extra fields for save/share feature (not in base spec but needed by UI)
+  savedTripId: string | null;
+  shareToken: string | null;
 }
 
-const initialState = {
-  stage: 'spark' as PlanningStage,
-  initialPrompt: '',
+// ─── Actions ─────────────────────────────────────────────────────────────────────
+
+interface PlanningActions {
+  setStage: (stage: PlanningStage) => void;
+  setUserInput: (input: string) => void;
+  setUserProfile: (profile: Partial<UserProfile>) => void;
+  addToConversation: (message: Message) => void;
+  setDiscoveredDestinations: (destinations: Destination[]) => void;
+  addToShortlist: (destination: Destination) => void;
+  removeFromShortlist: (destinationId: string) => void;
+  clearShortlist: () => void;
+  setSelectedDestination: (destination: Destination) => void;
+  setComparisonResult: (result: ComparisonResult) => void;
+  setTripConfig: (config: TripConfig) => void;
+  setItinerary: (itinerary: Itinerary) => void;
+  addRefineMessage: (message: Message) => void;
+  applyRefinementPatch: (patch: RefinementPatch) => void;
+  setLoading: (isLoading: boolean, message?: string) => void;
+  setError: (error: string | null) => void;
+  resetSession: () => void;
+  goBack: () => void;
+  setSavedTripId: (id: string) => void;
+  setShareToken: (token: string) => void;
+  // Helpers
+  canAddToShortlist: () => boolean;
+  isInShortlist: (destinationId: string) => boolean;
+  getTotalBudget: () => number;
+  getItineraryDay: (dayNumber: number) => ItineraryDay | undefined;
+}
+
+type PlanningStore = PlanningState & PlanningActions;
+
+// ─── Stage order for goBack() ────────────────────────────────────────────────────
+
+const STAGE_ORDER: PlanningStage[] = [
+  PlanningStage.SPARK,
+  PlanningStage.DISCOVERY,
+  PlanningStage.SHORTLIST,
+  PlanningStage.COMPARISON,
+  PlanningStage.TRIP_CONFIG,
+  PlanningStage.ITINERARY,
+  PlanningStage.REFINE,
+];
+
+function generateSessionId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// ─── Initial state ───────────────────────────────────────────────────────────────
+
+const DEFAULT_USER_PROFILE: UserProfile = {
+  homeCity: '',
+  passportCountry: 'India',
+  currency: 'USD',
+  travelStyle: '',
+};
+
+const getInitialState = (): PlanningState => ({
+  stage: PlanningStage.SPARK,
+  userInput: '',
+  userProfile: DEFAULT_USER_PROFILE,
   conversationHistory: [],
-  destinations: [],
-  shortlist: [],
-  chosenDestination: null,
-  tripConfig: {},
+  discoveredDestinations: [],
+  shortlistedDestinations: [],
+  selectedDestination: null,
+  comparisonResult: null,
+  tripConfig: null,
   itinerary: null,
+  refineMessages: [],
+  isLoading: false,
+  loadingMessage: 'Drift is thinking...',
+  error: null,
+  sessionId: generateSessionId(),
   savedTripId: null,
   shareToken: null,
-  isLoading: false,
-  loadingMessage: '',
-  error: null,
-};
+});
+
+// ─── Store ───────────────────────────────────────────────────────────────────────
 
 export const usePlanningStore = create<PlanningStore>()(
   persist(
-    (set) => ({
-      ...initialState,
+    (set, get) => ({
+      ...getInitialState(),
 
       setStage: (stage) => set({ stage }),
-      setInitialPrompt: (initialPrompt) => set({ initialPrompt }),
-      addMessage: (message) =>
+
+      setUserInput: (userInput) => set({ userInput }),
+
+      setUserProfile: (profile) =>
+        set((state) => ({ userProfile: { ...state.userProfile, ...profile } })),
+
+      addToConversation: (message) =>
         set((state) => ({
           conversationHistory: [...state.conversationHistory, message],
         })),
-      setDestinations: (destinations) => set({ destinations }),
-      refreshDestination: (id, replacement) =>
-        set((state) => ({
-          destinations: state.destinations.map((d) => (d.id === id ? replacement : d)),
-        })),
+
+      setDiscoveredDestinations: (discoveredDestinations) =>
+        set({ discoveredDestinations }),
+
       addToShortlist: (destination) =>
         set((state) => {
-          if (state.shortlist.length >= 3) return state;
-          if (state.shortlist.find((d) => d.id === destination.id)) return state;
-          return { shortlist: [...state.shortlist, destination] };
+          if (state.shortlistedDestinations.length >= 3) return state;
+          if (state.shortlistedDestinations.some((d) => d.id === destination.id)) return state;
+          return {
+            shortlistedDestinations: [...state.shortlistedDestinations, destination],
+          };
         }),
-      removeFromShortlist: (id) =>
+
+      removeFromShortlist: (destinationId) =>
         set((state) => ({
-          shortlist: state.shortlist.filter((d) => d.id !== id),
+          shortlistedDestinations: state.shortlistedDestinations.filter(
+            (d) => d.id !== destinationId
+          ),
         })),
-      setChosenDestination: (chosenDestination) => set({ chosenDestination }),
-      updateTripConfig: (config) =>
-        set((state) => ({
-          tripConfig: { ...state.tripConfig, ...config },
-        })),
+
+      clearShortlist: () => set({ shortlistedDestinations: [] }),
+
+      setSelectedDestination: (selectedDestination) => set({ selectedDestination }),
+
+      setComparisonResult: (comparisonResult) => set({ comparisonResult }),
+
+      setTripConfig: (tripConfig) => set({ tripConfig }),
+
       setItinerary: (itinerary) => set({ itinerary }),
-      setSavedTripId: (savedTripId) => set({ savedTripId }),
-      setShareToken: (shareToken) => set({ shareToken }),
+
+      addRefineMessage: (message) =>
+        set((state) => ({
+          refineMessages: [...state.refineMessages, message],
+        })),
+
+      applyRefinementPatch: (patch) =>
+        set((state) => {
+          if (!state.itinerary) return state;
+
+          const updatedDays = state.itinerary.days.map((day) => {
+            const mod = patch.modifiedDays.find((m) => m.dayNumber === day.dayNumber);
+            if (!mod) return day;
+
+            if (mod.period === 'full') {
+              return {
+                ...day,
+                morning: { activities: mod.activities },
+                afternoon: { activities: [] },
+                evening: { activities: [] },
+              };
+            }
+
+            return {
+              ...day,
+              [mod.period]: { activities: mod.activities },
+            };
+          });
+
+          const budgetDelta = patch.budgetDelta?.amount ?? 0;
+          return {
+            itinerary: {
+              ...state.itinerary,
+              days: updatedDays,
+              budgetSummary: {
+                ...state.itinerary.budgetSummary,
+                grandTotal: state.itinerary.budgetSummary.grandTotal + budgetDelta,
+              },
+            },
+          };
+        }),
+
       setLoading: (isLoading, loadingMessage = 'Drift is thinking...') =>
         set({ isLoading, loadingMessage }),
+
       setError: (error) => set({ error }),
-      reset: () => set(initialState),
+
+      resetSession: () =>
+        set({
+          ...getInitialState(),
+          sessionId: generateSessionId(),
+        }),
+
+      goBack: () =>
+        set((state) => {
+          const currentIndex = STAGE_ORDER.indexOf(state.stage);
+          if (currentIndex <= 0) return state;
+          return { stage: STAGE_ORDER[currentIndex - 1] };
+        }),
+
+      setSavedTripId: (savedTripId) => set({ savedTripId }),
+
+      setShareToken: (shareToken) => set({ shareToken }),
+
+      // ── Helpers ────────────────────────────────────────────────────────────────
+
+      canAddToShortlist: () => {
+        const { shortlistedDestinations } = get();
+        return shortlistedDestinations.length < 3;
+      },
+
+      isInShortlist: (destinationId) => {
+        return get().shortlistedDestinations.some((d) => d.id === destinationId);
+      },
+
+      getTotalBudget: () => {
+        return get().itinerary?.budgetSummary.grandTotal ?? 0;
+      },
+
+      getItineraryDay: (dayNumber) => {
+        return get().itinerary?.days.find((d) => d.dayNumber === dayNumber);
+      },
     }),
     {
       name: 'driftplan-session',
       partialize: (state) => ({
         stage: state.stage,
-        initialPrompt: state.initialPrompt,
-        conversationHistory: state.conversationHistory,
-        destinations: state.destinations,
-        shortlist: state.shortlist,
-        chosenDestination: state.chosenDestination,
-        tripConfig: state.tripConfig,
+        userProfile: state.userProfile,
         itinerary: state.itinerary,
+        tripConfig: state.tripConfig,
+        sessionId: state.sessionId,
+        // Extra persisted for UX continuity
+        userInput: state.userInput,
+        discoveredDestinations: state.discoveredDestinations,
+        shortlistedDestinations: state.shortlistedDestinations,
+        selectedDestination: state.selectedDestination,
         savedTripId: state.savedTripId,
         shareToken: state.shareToken,
       }),

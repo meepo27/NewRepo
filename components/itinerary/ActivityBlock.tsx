@@ -1,19 +1,28 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { MapPin, DollarSign, ExternalLink } from 'lucide-react';
-import type { Activity } from '@/types';
-import { formatCurrency } from '@/lib/utils';
+import { MapPin, ExternalLink, Clock } from 'lucide-react';
+import type { ActivityItem } from '@/types/planning';
 
-const TIME_LABELS = { morning: '🌅 Morning', afternoon: '☀️ Afternoon', evening: '🌙 Evening' };
+const TYPE_ICONS: Record<ActivityItem['type'], string> = {
+  activity: '🎯',
+  meal: '🍽️',
+  transport: '🚌',
+  experience: '✨',
+};
 
 interface ActivityBlockProps {
-  activity: Activity;
-  currency: string;
+  activity: ActivityItem;
   index: number;
 }
 
-export function ActivityBlock({ activity, currency, index }: ActivityBlockProps) {
+export function ActivityBlock({ activity, index }: ActivityBlockProps) {
+  const cost = activity.estimatedCost;
+  const costDisplay =
+    cost.amount === 0
+      ? 'Free'
+      : `${cost.currency} ${cost.amount.toLocaleString()} / ${cost.per}`;
+
   return (
     <motion.div
       initial={{ opacity: 0, x: -10 }}
@@ -27,28 +36,44 @@ export function ActivityBlock({ activity, currency, index }: ActivityBlockProps)
       <div className="absolute left-0.5 top-4 bottom-0 w-px bg-white/8" />
 
       <div className="bg-[#141929] rounded-xl p-4 border border-white/8 space-y-2">
-        <h4 className="text-white font-medium text-sm">{activity.name}</h4>
+        <div className="flex items-start gap-2">
+          <span className="text-base mt-0.5 shrink-0">{TYPE_ICONS[activity.type]}</span>
+          <div className="flex-1 min-w-0">
+            <h4 className="text-white font-medium text-sm leading-tight">{activity.name}</h4>
+          </div>
+        </div>
+
         <p className="text-white/55 text-xs leading-relaxed">{activity.description}</p>
 
-        <div className="flex items-center gap-3 pt-1">
-          {activity.location && (
+        {activity.tips && (
+          <p className="text-amber-400/60 text-xs italic border-l-2 border-amber-500/30 pl-2">
+            {activity.tips}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          {activity.location?.name && (
             <span className="flex items-center gap-1 text-white/40 text-xs">
               <MapPin size={11} />
-              {activity.location}
+              {activity.location.name}
             </span>
           )}
-          {activity.estimatedCost > 0 && (
-            <span className="flex items-center gap-1 text-amber-400/70 text-xs">
-              <DollarSign size={11} />
-              {formatCurrency(activity.estimatedCost, currency)}
+          {activity.duration && (
+            <span className="flex items-center gap-1 text-white/40 text-xs">
+              <Clock size={11} />
+              {activity.duration}
             </span>
           )}
-          {activity.estimatedCost === 0 && (
-            <span className="text-green-400/70 text-xs">Free</span>
-          )}
-          {activity.bookingUrl && (
+          <span
+            className={
+              cost.amount === 0 ? 'text-green-400/70 text-xs' : 'text-amber-400/70 text-xs'
+            }
+          >
+            {costDisplay}
+          </span>
+          {activity.bookingLink && (
             <a
-              href={activity.bookingUrl}
+              href={activity.bookingLink}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1 text-amber-400 text-xs hover:text-amber-300 transition-colors ml-auto"
@@ -61,5 +86,3 @@ export function ActivityBlock({ activity, currency, index }: ActivityBlockProps)
     </motion.div>
   );
 }
-
-export { TIME_LABELS };

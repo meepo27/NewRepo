@@ -3,15 +3,22 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { RefreshCw, Plus, Check } from 'lucide-react';
-import type { Destination } from '@/types';
+import type { Destination } from '@/types/planning';
 import { cn } from '@/lib/utils';
 
-const BUDGET_LABELS = { budget: '$ Budget', mid: '$$ Mid-range', luxury: '$$$ Luxury' };
+const BUDGET_LABELS = { budget: '$ Budget', mid: '$$ Mid-range', luxury: '$$$ Luxury' } as const;
 const BUDGET_COLORS = {
   budget: 'bg-green-900/50 text-green-400 border-green-800',
   mid: 'bg-blue-900/50 text-blue-400 border-blue-800',
   luxury: 'bg-amber-900/50 text-amber-400 border-amber-800',
-};
+} as const;
+
+const CARD_GRADIENTS = [
+  'linear-gradient(135deg, #1a2040 0%, #2d1b69 100%)',
+  'linear-gradient(135deg, #1f3a5f 0%, #0f3460 100%)',
+  'linear-gradient(135deg, #2d3a4a 0%, #1a4a3a 100%)',
+  'linear-gradient(135deg, #3a1f4a 0%, #1f3a5f 100%)',
+];
 
 interface DestinationCardProps {
   destination: Destination;
@@ -28,15 +35,14 @@ export function DestinationCard({
   onRefresh,
   index,
 }: DestinationCardProps) {
-  const [imgUrl, setImgUrl] = useState<string>('');
+  const [imgUrl, setImgUrl] = useState('');
   const [imgError, setImgError] = useState(false);
 
   useEffect(() => {
     const key = process.env.NEXT_PUBLIC_UNSPLASH_ACCESS_KEY;
     if (!key) return;
-
     fetch(
-      `https://api.unsplash.com/search/photos?query=${encodeURIComponent(destination.imageQuery)}&per_page=1&orientation=landscape`,
+      `https://api.unsplash.com/search/photos?query=${encodeURIComponent(destination.unsplashQuery)}&per_page=1&orientation=landscape`,
       { headers: { Authorization: `Client-ID ${key}` } }
     )
       .then((r) => r.json())
@@ -44,14 +50,9 @@ export function DestinationCard({
         if (d.results?.[0]?.urls?.regular) setImgUrl(d.results[0].urls.regular);
       })
       .catch(() => {});
-  }, [destination.imageQuery]);
+  }, [destination.unsplashQuery]);
 
-  const gradients = [
-    'linear-gradient(135deg, #1a2040 0%, #2d1b69 100%)',
-    'linear-gradient(135deg, #1f3a5f 0%, #0f3460 100%)',
-    'linear-gradient(135deg, #2d3a4a 0%, #1a4a3a 100%)',
-    'linear-gradient(135deg, #3a1f4a 0%, #1f3a5f 100%)',
-  ];
+  const gradient = CARD_GRADIENTS[index % CARD_GRADIENTS.length];
 
   return (
     <motion.div
@@ -59,14 +60,14 @@ export function DestinationCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: index * 0.1 }}
       className={cn(
-        'group relative rounded-2xl overflow-hidden border transition-all duration-300 cursor-pointer card-hover',
-        isShortlisted ? 'border-amber-500/60 shadow-lg shadow-amber-500/10' : 'border-white/8 hover:border-white/20'
+        'group relative rounded-2xl overflow-hidden border transition-all duration-300 card-hover',
+        isShortlisted
+          ? 'border-amber-500/60 shadow-lg shadow-amber-500/10'
+          : 'border-white/8 hover:border-white/20'
       )}
-      style={{
-        background: gradients[index % gradients.length],
-      }}
+      style={{ background: gradient }}
     >
-      {/* Background image */}
+      {/* Image */}
       <div className="relative h-44 overflow-hidden">
         {imgUrl && !imgError ? (
           <img
@@ -76,56 +77,64 @@ export function DestinationCard({
             onError={() => setImgError(true)}
           />
         ) : (
-          <div
-            className="w-full h-full"
-            style={{ background: gradients[index % gradients.length] }}
-          />
+          <div className="w-full h-full" style={{ background: gradient }} />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
-        {/* Budget badge */}
         <div className="absolute top-3 left-3">
-          <span className={cn('text-xs px-2.5 py-1 rounded-full border font-medium', BUDGET_COLORS[destination.budgetRange])}>
-            {BUDGET_LABELS[destination.budgetRange]}
+          <span
+            className={cn(
+              'text-xs px-2.5 py-1 rounded-full border font-medium',
+              BUDGET_COLORS[destination.budgetTier]
+            )}
+          >
+            {BUDGET_LABELS[destination.budgetTier]}
           </span>
         </div>
 
-        {/* Refresh button */}
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); onRefresh(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRefresh();
+          }}
           className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/40 backdrop-blur-sm text-white/70 hover:text-white hover:bg-black/60 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
           title="Get a different suggestion"
         >
           <RefreshCw size={14} />
         </button>
 
-        {/* Destination name overlay */}
         <div className="absolute bottom-3 left-4">
           <h3 className="text-white font-semibold text-lg leading-tight">{destination.name}</h3>
           <p className="text-white/70 text-sm">{destination.country}</p>
         </div>
       </div>
 
-      {/* Card body */}
+      {/* Body */}
       <div className="p-4 space-y-3">
-        <p className="text-white/75 text-sm leading-relaxed line-clamp-3">{destination.description}</p>
+        {destination.tagline && (
+          <p className="text-amber-400/80 text-xs font-medium italic">{destination.tagline}</p>
+        )}
+        <p className="text-white/75 text-sm leading-relaxed line-clamp-3">
+          {destination.description}
+        </p>
 
         <div className="flex items-center gap-1.5 text-white/45 text-xs">
           <span className="text-amber-400/70">Best time:</span>
-          <span>{destination.bestTime}</span>
+          <span>{destination.bestMonths}</span>
         </div>
 
-        {/* Vibe tags */}
         <div className="flex flex-wrap gap-1.5">
           {destination.vibeTags.map((tag) => (
-            <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-white/8 text-white/50 border border-white/8">
+            <span
+              key={tag}
+              className="text-xs px-2 py-0.5 rounded-full bg-white/8 text-white/50 border border-white/8"
+            >
               {tag}
             </span>
           ))}
         </div>
 
-        {/* Shortlist button */}
         <button
           type="button"
           onClick={onShortlist}
@@ -137,9 +146,13 @@ export function DestinationCard({
           )}
         >
           {isShortlisted ? (
-            <><Check size={15} /> Added to shortlist</>
+            <>
+              <Check size={15} /> Added to shortlist
+            </>
           ) : (
-            <><Plus size={15} /> Add to shortlist</>
+            <>
+              <Plus size={15} /> Add to shortlist
+            </>
           )}
         </button>
       </div>

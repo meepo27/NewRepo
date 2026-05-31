@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Share2, BookmarkPlus, FileDown } from 'lucide-react';
-import { usePlanningStore } from '@/store/planningStore';
+import { usePlanningStore, PlanningStage } from '@/store/planningStore';
 import { DayCard } from '@/components/itinerary/DayCard';
 import { ItinerarySidebar } from '@/components/itinerary/ItinerarySidebar';
 import { RefineChatBar } from '@/components/itinerary/RefineChatBar';
@@ -18,7 +18,7 @@ export function ItineraryStage() {
   const printRef = useRef<HTMLDivElement>(null);
 
   if (!itinerary) {
-    store.setStage('builder');
+    store.setStage(PlanningStage.TRIP_CONFIG);
     return null;
   }
 
@@ -41,13 +41,13 @@ export function ItineraryStage() {
 
     doc.setFontSize(16);
     doc.setTextColor(0, 0, 0);
-    doc.text(`${itinerary.destination}, ${itinerary.country}`, 15, 32);
+    doc.text(`${itinerary.tripSummary.destination}, ${itinerary.tripSummary.country}`, 15, 32);
 
     doc.setFontSize(10);
     doc.setTextColor(100, 100, 100);
     const config = store.tripConfig;
-    if (config.startDate && config.endDate) {
-      doc.text(formatDateRange(config.startDate, config.endDate), 15, 40);
+    if (config?.travelDates?.from && config?.travelDates?.to) {
+      doc.text(formatDateRange(config.travelDates.from, config.travelDates.to), 15, 40);
     }
 
     let y = 50;
@@ -58,7 +58,11 @@ export function ItineraryStage() {
       doc.text(`Day ${day.dayNumber}: ${day.theme}`, 15, y);
       y += 6;
 
-      const allActivities = [...day.morning, ...day.afternoon, ...day.evening];
+      const allActivities = [
+        ...day.morning.activities,
+        ...day.afternoon.activities,
+        ...day.evening.activities,
+      ];
       for (const act of allActivities) {
         if (y > 270) { doc.addPage(); y = 20; }
         doc.setFontSize(9);
@@ -71,9 +75,9 @@ export function ItineraryStage() {
 
     doc.setFontSize(10);
     doc.setTextColor(150, 150, 150);
-    doc.text(`Total estimated cost: ${itinerary.currency} ${itinerary.totalEstimatedCost.toLocaleString()}`, 15, y + 5);
+    doc.text(`Total estimated cost: ${itinerary.budgetSummary.currency} ${itinerary.budgetSummary.grandTotal.toLocaleString()}`, 15, y + 5);
 
-    doc.save(`driftplan-${itinerary.destination.toLowerCase().replace(/\s/g, '-')}.pdf`);
+    doc.save(`driftplan-${itinerary.tripSummary.destination.toLowerCase().replace(/\s/g, '-')}.pdf`);
   };
 
   return (
@@ -83,17 +87,17 @@ export function ItineraryStage() {
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => store.setStage('builder')}
+              onClick={() => store.setStage(PlanningStage.TRIP_CONFIG)}
               className="text-white/40 hover:text-white transition-colors"
             >
               <ArrowLeft size={18} />
             </button>
             <div>
               <h1 className="text-white font-semibold text-base leading-tight">
-                {itinerary.destination}
+                {itinerary.tripSummary.destination}
               </h1>
               <p className="text-white/40 text-xs">
-                {itinerary.totalDays} days · {itinerary.currency} {itinerary.totalEstimatedCost.toLocaleString()}
+                {itinerary.tripSummary.duration} days · {itinerary.budgetSummary.currency} {itinerary.budgetSummary.grandTotal.toLocaleString()}
               </p>
             </div>
           </div>
@@ -149,7 +153,7 @@ export function ItineraryStage() {
               <DayCard
                 key={day.dayNumber}
                 day={day}
-                currency={itinerary.currency}
+                currency={itinerary.budgetSummary.currency}
                 isOpen={openDays.has(day.dayNumber)}
                 onToggle={() => toggleDay(day.dayNumber)}
               />
