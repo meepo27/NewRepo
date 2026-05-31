@@ -234,3 +234,39 @@ export interface UserProfile {
   currency: string;
   travelStyle: string;
 }
+
+// ─── Booking layer ────────────────────────────────────────────────────────────────
+
+export interface BookingChecklistItem {
+  id: string;
+  category: 'flights' | 'accommodation' | 'trains' | 'buses' | 'activities' | 'visa' | 'insurance';
+  title: string;
+  urgency: 'book-now' | 'book-soon' | 'can-wait';
+  urgencyReason: string;
+  recommendedLeadTime: string;
+  estimatedCost: {
+    amount: number;
+    currency: string;
+    per: 'person' | 'total' | 'night';
+  };
+  isRequired: boolean;
+  notes: string | null;
+}
+
+export interface BookingPlatform {
+  name: string;
+  url: string;
+  logo: string;
+  bestFor: string;
+}
+
+export interface TrainLinkResult {
+  primaryLink: string;
+  alternateLink: string | null;
+  providerName: string;
+  countryName: string;
+}
+
+export interface ActivityLinksResult {
+  platforms: BookingPlatform[];
+}

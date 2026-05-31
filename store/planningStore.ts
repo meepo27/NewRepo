@@ -12,6 +12,7 @@ import {
   type TripConfig,
   type Message,
   type UserProfile,
+  type BookingChecklistItem,
 } from '@/types/planning';
 
 export { PlanningStage };
@@ -37,6 +38,10 @@ interface PlanningState {
   // Extra fields for save/share feature (not in base spec but needed by UI)
   savedTripId: string | null;
   shareToken: string | null;
+  // ── Booking layer ───────────────────────────────────────────────────────────────
+  bookingChecklist: BookingChecklistItem[] | null;
+  activeBookingCategory: string | null;
+  completedBookings: string[];
 }
 
 // ─── Actions ─────────────────────────────────────────────────────────────────────
@@ -62,11 +67,17 @@ interface PlanningActions {
   goBack: () => void;
   setSavedTripId: (id: string) => void;
   setShareToken: (token: string) => void;
+  // ── Booking layer actions ───────────────────────────────────────────────────────
+  setBookingChecklist: (checklist: BookingChecklistItem[]) => void;
+  setActiveBookingCategory: (category: string | null) => void;
+  markBookingComplete: (itemId: string) => void;
+  unmarkBookingComplete: (itemId: string) => void;
   // Helpers
   canAddToShortlist: () => boolean;
   isInShortlist: (destinationId: string) => boolean;
   getTotalBudget: () => number;
   getItineraryDay: (dayNumber: number) => ItineraryDay | undefined;
+  getBookingProgress: () => { completed: number; total: number; percentage: number };
 }
 
 type PlanningStore = PlanningState & PlanningActions;
@@ -114,6 +125,9 @@ const getInitialState = (): PlanningState => ({
   sessionId: generateSessionId(),
   savedTripId: null,
   shareToken: null,
+  bookingChecklist: null,
+  activeBookingCategory: null,
+  completedBookings: [],
 });
 
 // ─── Store ───────────────────────────────────────────────────────────────────────
@@ -227,6 +241,23 @@ export const usePlanningStore = create<PlanningStore>()(
 
       setShareToken: (shareToken) => set({ shareToken }),
 
+      // ── Booking layer ──────────────────────────────────────────────────────────
+
+      setBookingChecklist: (bookingChecklist) => set({ bookingChecklist }),
+
+      setActiveBookingCategory: (activeBookingCategory) => set({ activeBookingCategory }),
+
+      markBookingComplete: (itemId) =>
+        set((state) => {
+          if (state.completedBookings.includes(itemId)) return state;
+          return { completedBookings: [...state.completedBookings, itemId] };
+        }),
+
+      unmarkBookingComplete: (itemId) =>
+        set((state) => ({
+          completedBookings: state.completedBookings.filter((id) => id !== itemId),
+        })),
+
       // ── Helpers ────────────────────────────────────────────────────────────────
 
       canAddToShortlist: () => {
@@ -245,6 +276,17 @@ export const usePlanningStore = create<PlanningStore>()(
       getItineraryDay: (dayNumber) => {
         return get().itinerary?.days.find((d) => d.dayNumber === dayNumber);
       },
+
+      getBookingProgress: () => {
+        const { bookingChecklist, completedBookings } = get();
+        const total = bookingChecklist?.length ?? 0;
+        const completed = completedBookings.length;
+        return {
+          completed,
+          total,
+          percentage: total === 0 ? 0 : Math.round((completed / total) * 100),
+        };
+      },
     }),
     {
       name: 'driftplan-session',
@@ -261,6 +303,9 @@ export const usePlanningStore = create<PlanningStore>()(
         selectedDestination: state.selectedDestination,
         savedTripId: state.savedTripId,
         shareToken: state.shareToken,
+        bookingChecklist: state.bookingChecklist,
+        completedBookings: state.completedBookings,
+        // activeBookingCategory intentionally NOT persisted (transient UI state)
       }),
     }
   )
