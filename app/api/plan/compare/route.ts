@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callClaude, ClaudeParseError } from '@/lib/anthropic';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 import type { ComparisonResult } from '@/types/planning';
 
 const SYSTEM_PROMPT = `You are Drift, the AI brain of Driftplan. The user has shortlisted
@@ -75,6 +76,10 @@ interface CompareRequest {
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
+    const rl = await checkRateLimit(ip, 'ip', '/api/plan/compare');
+    if (!rl.allowed) return rateLimitResponse(rl.retryAfter ?? 3600);
+
     const body: CompareRequest = await req.json();
 
     if (!body.shortlistedDestinations?.length) {

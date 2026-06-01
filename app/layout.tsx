@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Geist } from 'next/font/google';
 import './globals.css';
 import { ServiceWorkerRegistrar } from '@/components/ui/ServiceWorkerRegistrar';
+import { PwaInstallPrompt } from '@/components/ui/PwaInstallPrompt';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-full flex flex-col">
         <ServiceWorkerRegistrar />
         {children}
+        <PwaInstallPrompt />
       </body>
     </html>
   );

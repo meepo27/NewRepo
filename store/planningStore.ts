@@ -13,6 +13,7 @@ import {
   type Message,
   type UserProfile,
   type BookingChecklistItem,
+  type ChecklistBucket,
 } from '@/types/planning';
 
 export { PlanningStage };
@@ -42,6 +43,9 @@ interface PlanningState {
   bookingChecklist: BookingChecklistItem[] | null;
   activeBookingCategory: string | null;
   completedBookings: string[];
+  // ── Pre-departure checklist (Module 4D) ────────────────────────────────────────
+  checklist: ChecklistBucket[] | null;
+  completedChecklistItems: string[];
 }
 
 // ─── Actions ─────────────────────────────────────────────────────────────────────
@@ -72,12 +76,16 @@ interface PlanningActions {
   setActiveBookingCategory: (category: string | null) => void;
   markBookingComplete: (itemId: string) => void;
   unmarkBookingComplete: (itemId: string) => void;
+  // ── Checklist actions ────────────────────────────────────────────────────────
+  setChecklist: (buckets: ChecklistBucket[]) => void;
+  toggleChecklistItem: (itemId: string) => void;
   // Helpers
   canAddToShortlist: () => boolean;
   isInShortlist: (destinationId: string) => boolean;
   getTotalBudget: () => number;
   getItineraryDay: (dayNumber: number) => ItineraryDay | undefined;
   getBookingProgress: () => { completed: number; total: number; percentage: number };
+  getChecklistProgress: () => { completed: number; total: number; percentage: number };
 }
 
 type PlanningStore = PlanningState & PlanningActions;
@@ -128,6 +136,8 @@ const getInitialState = (): PlanningState => ({
   bookingChecklist: null,
   activeBookingCategory: null,
   completedBookings: [],
+  checklist: null,
+  completedChecklistItems: [],
 });
 
 // ─── Store ───────────────────────────────────────────────────────────────────────
@@ -258,6 +268,18 @@ export const usePlanningStore = create<PlanningStore>()(
           completedBookings: state.completedBookings.filter((id) => id !== itemId),
         })),
 
+      setChecklist: (checklist) => set({ checklist }),
+
+      toggleChecklistItem: (itemId) =>
+        set((state) => {
+          const already = state.completedChecklistItems.includes(itemId);
+          return {
+            completedChecklistItems: already
+              ? state.completedChecklistItems.filter((id) => id !== itemId)
+              : [...state.completedChecklistItems, itemId],
+          };
+        }),
+
       // ── Helpers ────────────────────────────────────────────────────────────────
 
       canAddToShortlist: () => {
@@ -287,6 +309,17 @@ export const usePlanningStore = create<PlanningStore>()(
           percentage: total === 0 ? 0 : Math.round((completed / total) * 100),
         };
       },
+
+      getChecklistProgress: () => {
+        const { checklist, completedChecklistItems } = get();
+        const total = checklist?.reduce((sum, b) => sum + b.tasks.length, 0) ?? 0;
+        const completed = completedChecklistItems.length;
+        return {
+          completed,
+          total,
+          percentage: total === 0 ? 0 : Math.round((completed / total) * 100),
+        };
+      },
     }),
     {
       name: 'driftplan-session',
@@ -305,6 +338,8 @@ export const usePlanningStore = create<PlanningStore>()(
         shareToken: state.shareToken,
         bookingChecklist: state.bookingChecklist,
         completedBookings: state.completedBookings,
+        checklist: state.checklist,
+        completedChecklistItems: state.completedChecklistItems,
         // activeBookingCategory intentionally NOT persisted (transient UI state)
       }),
     }

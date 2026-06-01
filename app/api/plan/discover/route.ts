@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callClaude, ClaudeParseError } from '@/lib/anthropic';
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit';
 import type { Destination } from '@/types/planning';
 
 const SYSTEM_PROMPT = `You are Drift, the AI brain of Driftplan — a travel planning app.
@@ -94,6 +95,10 @@ function parseDestination(raw: Record<string, unknown>): Destination {
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
+    const rl = await checkRateLimit(ip, 'ip', '/api/plan/discover');
+    if (!rl.allowed) return rateLimitResponse(rl.retryAfter ?? 3600);
+
     const body: DiscoverRequest = await req.json();
     const { userInput, homeCity, passportCountry, currency, conversationHistory } = body;
 

@@ -270,3 +270,21 @@ export interface TrainLinkResult {
 export interface ActivityLinksResult {
   platforms: BookingPlatform[];
 }
+
+// ─── Checklist (Module 4D) ────────────────────────────────────────────────────
+
+export interface ChecklistTask {
+  id: string;
+  label: string;
+  daysBeforeTrip?: number;
+  priority: 'high' | 'medium' | 'low';
+  link?: string;
+  linkLabel?: string;
+}
+
+export interface ChecklistBucket {
+  id: string;
+  title: string;
+  icon: string;
+  tasks: ChecklistTask[];
+}
